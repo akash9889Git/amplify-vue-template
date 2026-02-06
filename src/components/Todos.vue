@@ -1,55 +1,104 @@
 <script setup lang="ts">
-import '@/assets/main.css';
-import { onMounted, ref } from 'vue';
-import type { Schema } from '../../amplify/data/resource';
-import { generateClient } from 'aws-amplify/data';
+import '@/assets/main.css'
+import { ref, onMounted, onUnmounted } from 'vue'
+import type { Schema } from '../../amplify/data/resource'
+import { generateClient } from 'aws-amplify/data'
 
-const client = generateClient<Schema>();
+/* Amplify client */
+const client = generateClient<Schema>()
 
-// create a reactive reference to the array of todos
-const todos = ref<Array<Schema['Todo']["type"]>>([]);
+/* State */
+const todos = ref<Array<Schema['Todo']['type']>>([])
 
+/* Subscription reference */
+let subscription: any = null
+
+/* Fetch todos (real-time) */
 function listTodos() {
-  client.models.Todo.observeQuery().subscribe({
-    next: ({ items, isSynced }) => {
+  subscription = client.models.Todo.observeQuery().subscribe({
+    next: ({ items }) => {
       todos.value = items
-     },
-  }); 
+    },
+    error: (err) => {
+      console.error('ObserveQuery error:', err)
+    }
+  })
 }
 
-function createTodo() {
-  client.models.Todo.create({
-    content: window.prompt("Todo content")
-  }).then(() => {
-    // After creating a new todo, update the list of todos
-    listTodos();
-  });
-}
-    
-// fetch todos when the component is mounted
- onMounted(() => {
-  listTodos();
-});
+/* Create todo */
+async function createTodo() {
+  const content = window.prompt('Enter todo')
+  if (!content) return
 
+  try {
+    await client.models.Todo.create({
+      content
+    })
+  } catch (error) {
+    console.error('Create failed:', error)
+  }
+}
+
+/* Delete todo */
+async function deleteTodo(id: string) {
+  const confirmed = window.confirm('Are you sure you want to delete?')
+  if (!confirmed) return
+
+  try {
+    await client.models.Todo.delete({ id })
+  } catch (error) {
+    console.error('Delete failed:', error)
+  }
+}
+
+/* Lifecycle */
+onMounted(() => {
+  listTodos()
+})
+
+onUnmounted(() => {
+  subscription?.unsubscribe()
+})
 </script>
 
 <template>
   <main>
-    <h1>My todos</h1>
-    <button @click="createTodo">+ new</button>
+    <h1>My Todos</h1>
+
+    <button @click="createTodo">➕ New Todo</button>
+
     <ul>
-      <li 
-        v-for="todo in todos" 
-        :key="todo.id">
+      <li v-for="todo in todos" :key="todo.id">
         {{ todo.content }}
+        <button @click="deleteTodo(todo.id)">❌</button>
       </li>
     </ul>
-    <div>
-      🥳 App successfully hosted. Try creating a new todo.
-      <br />
-      <a href="https://docs.amplify.aws/gen2/start/quickstart/nextjs-pages-router/">
-        Review next steps of this tutorial.
-      </a>
-    </div>
+
+    <p v-if="todos.length === 0">
+      No todos yet. Add one 👆
+    </p>
   </main>
 </template>
+
+<style scoped>
+main {
+  max-width: 500px;
+  margin: auto;
+  padding: 1rem;
+}
+
+ul {
+  padding: 0;
+}
+
+li {
+  list-style: none;
+  display: flex;
+  justify-content: space-between;
+  margin: 8px 0;
+}
+
+button {
+  cursor: pointer;
+}
+</style>
